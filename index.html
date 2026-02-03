@@ -3,129 +3,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced Web Video Editor</title>
+    <title>Professional Web Video Editor</title>
     <style>
-        :root { --bg: #121212; --panel: #252525; --accent: #ff9800; --text: #eee; }
-        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; touch-action: none; }
+        :root { --bg: #1a1a1a; --panel: #2d2d2d; --accent: #00a2ff; --text: #eee; --handle: #ffffff; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; touch-action: none; }
 
-        /* 上部エリア */
+        /* 上部レイアウト */
         #top-panel { display: flex; flex: 1; min-height: 0; border-bottom: 2px solid #000; }
+        #library-panel { width: 200px; background: var(--panel); border-right: 1px solid #111; padding: 10px; overflow-y: auto; font-size: 13px; }
         #preview-container { flex: 2; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-        canvas { max-width: 95%; max-height: 80%; background: #111; }
+        canvas { max-width: 95%; max-height: 80%; background: #111; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #inspector-panel { width: 250px; background: var(--panel); border-left: 1px solid #111; padding: 15px; overflow-y: auto; font-size: 13px; }
+
+        /* タイムライン */
+        #timeline-outer { height: 350px; background: #222; overflow-x: auto; overflow-y: hidden; position: relative; border-top: 1px solid #444; }
+        #timeline-content { position: relative; width: 5000px; height: 100%; }
+        #time-ruler { height: 30px; background: #333; border-bottom: 1px solid #444; width: 100%; cursor: ew-resize; }
+        .track { height: 70px; border-bottom: 1px solid #333; position: relative; width: 100%; background: rgba(255,255,255,0.02); display: flex; align-items: center; }
         
-        #controls-panel { flex: 1; background: var(--panel); padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-
-        /* タイムラインエリア */
-        #timeline-container { height: 300px; background: #1a1a1a; position: relative; overflow-x: auto; overflow-y: hidden; user-select: none; }
-        #time-ruler { height: 30px; background: #333; border-bottom: 1px solid #444; position: relative; width: 5000px; }
-        .track { height: 60px; border-bottom: 1px solid #333; position: relative; width: 5000px; background: rgba(255,255,255,0.02); }
-        .track-label { position: sticky; left: 0; background: #222; width: 60px; height: 100%; z-index: 10; font-size: 10px; display: flex; align-items: center; justify-content: center; border-right: 1px solid #444; }
-
         /* クリップ */
-        .clip { position: absolute; height: 50px; top: 5px; background: var(--accent); border-radius: 4px; border: 1px solid #fff; overflow: hidden; font-size: 10px; color: #000; padding: 2px; box-sizing: border-box; touch-action: none; }
-        .clip.text { background: #4caf50; }
-        .clip.audio { background: #2196f3; }
-        .clip.selected { border: 3px solid #fff; box-shadow: 0 0 10px var(--accent); }
+        .clip { position: absolute; height: 50px; background: var(--accent); border-radius: 4px; border: 1px solid rgba(255,255,255,0.3); overflow: hidden; font-size: 11px; color: white; padding: 5px; box-sizing: border-box; cursor: move; touch-action: none; }
+        .clip.text { background: #673ab7; }
+        .clip.selected { outline: 2px solid #fff; z-index: 10; }
+        
+        /* 端っこのハンドル（長さ調整） */
+        .handle-r { position: absolute; right: 0; top: 0; bottom: 0; width: 15px; background: rgba(255,255,255,0.2); cursor: col-resize; display: flex; align-items: center; justify-content: center; font-weight: bold; }
 
         /* 再生ヘッド */
-        #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: red; z-index: 100; pointer-events: none; }
+        #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3b30; z-index: 1000; pointer-events: none; }
+        #playhead::after { content: ''; position: absolute; top: 0; left: -7px; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 10px solid #ff3b30; }
 
-        /* 汎用ボタン */
-        button { background: #444; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        button:active { background: var(--accent); }
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+        /* UIパーツ */
+        .btn { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-bottom: 5px; width: 100%; font-size: 13px; }
+        .btn:active { background: var(--accent); }
+        .group { margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        label { display: block; margin-bottom: 3px; color: #aaa; font-size: 11px; }
+        input[type="color"] { width: 100%; height: 30px; border: none; background: none; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div id="top-panel">
+    <div id="library-panel">
+        <p><b>MEDIA LIBRARY</b></p>
+        <p id="videoCount">動画: 0本</p>
+        <div id="videoList" style="font-size: 11px; color: #888;"></div>
+        <button class="btn" style="margin-top:10px" onclick="document.getElementById('fileVideo').click()">+ 動画を追加</button>
+        <button class="btn" onclick="addText()">+ テキストを追加</button>
+        <input type="file" id="fileVideo" hidden accept="video/*" multiple>
+    </div>
+
     <div id="preview-container">
         <canvas id="mainCanvas"></canvas>
-        <div style="margin-top:10px;">
-            <button id="btnPlay">再生 / 停止</button>
-            <button id="btnSplit" style="background:#d32f2f;">分割</button>
+        <div style="margin-top:10px; display:flex; gap:10px;">
+            <button class="btn" id="btnPlay" style="width:100px;">PLAY</button>
+            <button class="btn" id="btnSplit" style="background:#d32f2f; width:100px;">SPLIT</button>
         </div>
     </div>
     
-    <div id="controls-panel">
-        <h3>素材追加</h3>
-        <div class="btn-group">
-            <button onclick="document.getElementById('fileVideo').click()">+ 動画</button>
-            <button onclick="addText()">+ テキスト</button>
+    <div id="inspector-panel">
+        <p><b>INSPECTOR</b></p>
+        <div id="no-selection" style="color:#666">クリップを選択してください</div>
+        <div id="text-controls" style="display:none">
+            <div class="group">
+                <label>テキスト内容</label>
+                <input type="text" id="inspectText" class="btn">
+            </div>
+            <div class="group">
+                <label>文字色</label>
+                <input type="color" id="inspectColor">
+            </div>
+            <div class="group">
+                <label>枠線の色</label>
+                <input type="color" id="inspectStrokeColor">
+            </div>
+            <div class="group">
+                <label>枠線の太さ</label>
+                <input type="range" id="inspectStrokeWidth" min="0" max="20" value="0">
+            </div>
         </div>
-        <input type="file" id="fileVideo" hidden accept="video/*" multiple>
-        
-        <div id="inspector">
-            <p>設定 (選択中のクリップ)</p>
-            <input type="text" id="inspectText" placeholder="テキスト内容" style="width:100%; display:none;">
-        </div>
-        
-        <button id="btnExport" style="margin-top:auto; background: #0078d4;">プロジェクト保存(録画)</button>
-        <p id="status" style="font-size:12px; color:var(--accent);"></p>
+        <button id="btnExport" class="btn" style="margin-top:20px; background: #0078d4;">プロジェクト保存(WebM)</button>
+        <p id="status"></p>
     </div>
 </div>
 
-<div id="timeline-container">
+<div id="timeline-outer">
     <div id="time-ruler"></div>
-    <div id="playhead"></div>
-    <div class="track" id="videoTrack"><div class="track-label">VIDEO</div></div>
-    <div class="track" id="textTrack"><div class="track-label">TEXT</div></div>
-    <div class="track" id="audioTrack"><div class="track-label">AUDIO</div></div>
+    <div id="timeline-content">
+        <div id="playhead"></div>
+        <div class="track" id="textTrack"></div>
+        <div class="track" id="videoTrack"></div>
+    </div>
 </div>
 
 <script>
     const canvas = document.getElementById('mainCanvas');
     const ctx = canvas.getContext('2d');
-    const timeline = document.getElementById('timeline-container');
+    const timelineOuter = document.getElementById('timeline-outer');
+    const timelineContent = document.getElementById('timeline-content');
     const playhead = document.getElementById('playhead');
     
-    let clips = []; // 全クリップを管理
+    let clips = [];
     let selectedClip = null;
     let currentTime = 0;
     let isPlaying = false;
-    let pixelsPerSecond = 50; // ズーム倍率
+    let pixelsPerSecond = 50;
 
-    // --- データ構造 ---
+    // --- 1. クリップクラス ---
     class Clip {
         constructor(id, type, source, duration, trackId) {
             this.id = id;
-            this.type = type; // 'video', 'text', 'audio'
-            this.source = source; // HTMLVideoElement or String
-            this.start = 0; // タイムライン上の開始秒数
+            this.type = type;
+            this.source = source;
+            this.start = 0;
             this.duration = duration;
-            this.offset = 0; // 素材自体の開始位置（カット用）
+            this.offset = 0;
             this.trackId = trackId;
+            // テキスト初期設定
             this.text = "New Text";
+            this.color = "#ffffff";
+            this.strokeColor = "#000000";
+            this.strokeWidth = 2;
             this.dom = this.createDOM();
         }
 
         createDOM() {
             const div = document.createElement('div');
             div.className = `clip ${this.type}`;
-            div.innerText = this.type === 'video' ? 'Video' : this.text;
+            div.innerHTML = `<span></span><div class="handle-r">|</div>`;
             div.addEventListener('pointerdown', (e) => selectClip(this, e));
+            
+            // 右端ドラッグ（長さ調節）
+            const handle = div.querySelector('.handle-r');
+            handle.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                let startX = e.clientX;
+                let startDur = this.duration;
+                const onMove = (me) => {
+                    const diff = (me.clientX - startX) / pixelsPerSecond;
+                    this.duration = Math.max(0.1, startDur + diff);
+                    this.updateUI();
+                    render();
+                };
+                const onUp = () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                };
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', onUp);
+            });
+
             return div;
         }
 
         updateUI() {
             this.dom.style.left = (this.start * pixelsPerSecond) + "px";
             this.dom.style.width = (this.duration * pixelsPerSecond) + "px";
-            if (this.type === 'text') this.dom.innerText = this.text;
+            this.dom.querySelector('span').innerText = (this.type === 'video' ? 'Video Clip' : this.text);
         }
     }
 
-    // --- 素材追加機能 ---
+    // --- 2. 素材管理 ---
+    const videoFiles = [];
     document.getElementById('fileVideo').onchange = async (e) => {
         for (let file of e.target.files) {
             const v = document.createElement('video');
             v.src = URL.createObjectURL(file);
             v.muted = true;
             await new Promise(r => v.onloadedmetadata = r);
+            
             const clip = new Clip(Date.now(), 'video', v, v.duration, 'videoTrack');
-            clip.start = clips.length > 0 ? currentTime : 0;
+            clip.start = currentTime;
             addClipToTimeline(clip);
+            
+            videoFiles.push(file.name);
+            updateLibraryUI();
         }
     };
+
+    function updateLibraryUI() {
+        document.getElementById('videoCount').innerText = `動画: ${videoFiles.length}本`;
+        document.getElementById('videoList').innerHTML = videoFiles.map(f => `・${f}`).join('<br>');
+    }
 
     function addText() {
         const clip = new Clip(Date.now(), 'text', null, 5, 'textTrack');
@@ -137,115 +196,138 @@
         clips.push(clip);
         document.getElementById(clip.trackId).appendChild(clip.dom);
         clip.updateUI();
+        render();
     }
 
-    // --- 分割 (Split) 機能 ---
-    document.getElementById('btnSplit').onclick = () => {
-        if (!selectedClip || selectedClip.type !== 'video') return;
-        
-        const splitTime = currentTime - selectedClip.start;
-        if (splitTime <= 0 || splitTime >= selectedClip.duration) return;
-
-        // 新しいクリップ作成（後半部分）
-        const newClip = new Clip(Date.now(), selectedClip.type, selectedClip.source, selectedClip.duration - splitTime, selectedClip.trackId);
-        newClip.start = currentTime;
-        newClip.offset = selectedClip.offset + splitTime;
-
-        // 現在のクリップを短くする
-        selectedClip.duration = splitTime;
-        
-        addClipToTimeline(newClip);
-        selectedClip.updateUI();
-        newClip.updateUI();
-    };
-
-    // --- タイムライン操作 (ドラッグ & シーク) ---
-    timeline.onpointerdown = (e) => {
-        if (e.target.classList.contains('clip')) return;
-        const rect = timeline.getBoundingClientRect();
-        seek((e.clientX - rect.left + timeline.scrollLeft) / pixelsPerSecond);
-    };
-
-    function seek(time) {
+    // --- 3. タイムライン操作 (リアルタイム・スクラブ) ---
+    function updatePlayhead(x) {
+        const rect = timelineContent.getBoundingClientRect();
+        const time = (x - rect.left) / pixelsPerSecond;
         currentTime = Math.max(0, time);
         playhead.style.left = (currentTime * pixelsPerSecond) + "px";
         render();
     }
 
+    // ルーラー部分のドラッグでスクラブ
+    document.getElementById('time-ruler').onpointerdown = (e) => {
+        const movePlayhead = (me) => updatePlayhead(me.clientX);
+        movePlayhead(e);
+        const upPlayhead = () => {
+            window.removeEventListener('pointermove', movePlayhead);
+            window.removeEventListener('pointerup', upPlayhead);
+        };
+        window.addEventListener('pointermove', movePlayhead);
+        window.addEventListener('pointerup', upPlayhead);
+    };
+
+    // --- 4. インスペクタ制御 ---
     function selectClip(clip, e) {
         e.stopPropagation();
         if (selectedClip) selectedClip.dom.classList.remove('selected');
         selectedClip = clip;
         clip.dom.classList.add('selected');
+
+        document.getElementById('no-selection').style.display = 'none';
+        const textControls = document.getElementById('text-controls');
         
-        // インスペクタ更新
-        const textInput = document.getElementById('inspectText');
         if (clip.type === 'text') {
-            textInput.style.display = 'block';
-            textInput.value = clip.text;
-            textInput.oninput = (e) => { clip.text = e.target.value; clip.updateUI(); render(); };
+            textControls.style.display = 'block';
+            document.getElementById('inspectText').value = clip.text;
+            document.getElementById('inspectColor').value = clip.color;
+            document.getElementById('inspectStrokeColor').value = clip.strokeColor;
+            document.getElementById('inspectStrokeWidth').value = clip.strokeWidth;
         } else {
-            textInput.style.display = 'none';
+            textControls.style.display = 'none';
         }
     }
 
-    // --- レンダリングエンジン (最重要) ---
+    // インスペクタの値が変更された時
+    ['inspectText', 'inspectColor', 'inspectStrokeColor', 'inspectStrokeWidth'].forEach(id => {
+        document.getElementById(id).oninput = (e) => {
+            if (!selectedClip) return;
+            const val = e.target.value;
+            if (id === 'inspectText') selectedClip.text = val;
+            if (id === 'inspectColor') selectedClip.color = val;
+            if (id === 'inspectStrokeColor') selectedClip.strokeColor = val;
+            if (id === 'inspectStrokeWidth') selectedClip.strokeWidth = parseInt(val);
+            selectedClip.updateUI();
+            render();
+        };
+    });
+
+    // --- 5. レンダリング (合成描画) ---
     function render() {
         if (canvas.width !== 1280) { canvas.width = 1280; canvas.height = 720; }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. ビデオレイヤーの描画
         const activeClips = clips.filter(c => currentTime >= c.start && currentTime <= c.start + c.duration);
         
-        activeClips.forEach(clip => {
-            ctx.save();
-            
-            // 簡易フェードエフェクト (クリップの端0.5秒で適用)
-            let alpha = 1.0;
-            const fadeIn = currentTime - clip.start;
-            const fadeOut = (clip.start + clip.duration) - currentTime;
-            if (fadeIn < 0.5) alpha = fadeIn / 0.5;
-            if (fadeOut < 0.5) alpha = fadeOut / 0.5;
-            ctx.globalAlpha = alpha;
+        // 動画を描画
+        activeClips.filter(c => c.type === 'video').forEach(clip => {
+            clip.source.currentTime = clip.offset + (currentTime - clip.start);
+            ctx.drawImage(clip.source, 0, 0, canvas.width, canvas.height);
+        });
 
-            if (clip.type === 'video') {
-                clip.source.currentTime = clip.offset + (currentTime - clip.start);
-                ctx.drawImage(clip.source, 0, 0, canvas.width, canvas.height);
-            } else if (clip.type === 'text') {
-                ctx.fillStyle = "white";
-                ctx.font = "80px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText(clip.text, canvas.width/2, canvas.height/2);
+        // テキストを描画（動画の上に重ねる）
+        activeClips.filter(c => c.type === 'text').forEach(clip => {
+            ctx.save();
+            ctx.font = "bold 80px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            // 枠線
+            if (clip.strokeWidth > 0) {
+                ctx.strokeStyle = clip.strokeColor;
+                ctx.lineWidth = clip.strokeWidth;
+                ctx.strokeText(clip.text, canvas.width/2, canvas.height/2);
             }
-            
+            // 塗り
+            ctx.fillStyle = clip.color;
+            ctx.fillText(clip.text, canvas.width/2, canvas.height/2);
             ctx.restore();
         });
     }
 
-    // --- 再生ループ ---
+    // --- 6. 再生/分割 ---
     document.getElementById('btnPlay').onclick = () => {
         isPlaying = !isPlaying;
-        if (isPlaying) loop();
+        if (isPlaying) {
+            const loop = () => {
+                if (!isPlaying) return;
+                currentTime += 0.033;
+                playhead.style.left = (currentTime * pixelsPerSecond) + "px";
+                render();
+                requestAnimationFrame(loop);
+            };
+            loop();
+        }
     };
 
-    function loop() {
-        if (!isPlaying) return;
-        seek(currentTime + 0.033); // 約30fps
-        requestAnimationFrame(loop);
-    }
+    document.getElementById('btnSplit').onclick = () => {
+        if (!selectedClip || selectedClip.type !== 'video') return;
+        const splitPoint = currentTime - selectedClip.start;
+        if (splitPoint <= 0 || splitPoint >= selectedClip.duration) return;
 
-    // クリップのドラッグ移動 (簡易実装)
-    let isDragging = false;
+        const newClip = new Clip(Date.now(), 'video', selectedClip.source, selectedClip.duration - splitPoint, 'videoTrack');
+        newClip.start = currentTime;
+        newClip.offset = selectedClip.offset + splitPoint;
+
+        selectedClip.duration = splitPoint;
+        addClipToTimeline(newClip);
+        selectedClip.updateUI();
+    };
+
+    // クリップ移動のドラッグ
     window.addEventListener('pointermove', (e) => {
         if (selectedClip && e.buttons === 1 && e.target === selectedClip.dom) {
-            const rect = timeline.getBoundingClientRect();
-            const newStart = (e.clientX - rect.left + timeline.scrollLeft) / pixelsPerSecond;
+            const rect = timelineContent.getBoundingClientRect();
+            const newStart = (e.clientX - rect.left) / pixelsPerSecond;
             selectedClip.start = Math.max(0, newStart);
             selectedClip.updateUI();
+            render();
         }
     });
 
 </script>
-
 </body>
 </html>
