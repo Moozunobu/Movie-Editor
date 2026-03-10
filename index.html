@@ -8,30 +8,30 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Noto+Sans+JP:wght@300;400;700&display=swap');
 
 :root {
-  --bg-primary: #0d0d0f;
-  --bg-secondary: #141416;
-  --bg-panel: #1a1a1e;
-  --bg-surface: #222228;
-  --bg-hover: #2a2a32;
-  --accent: #e8a020;
-  --accent2: #20a8e8;
-  --accent3: #a020e8;
-  --success: #20e870;
-  --danger: #e82020;
-  --text-primary: #f0f0f5;
-  --text-secondary: #8888a0;
-  --text-muted: #555568;
-  --border: #2a2a38;
-  --border-accent: #3a3a50;
-  --timeline-bg: #111115;
-  --track-video: #1e3a5f;
-  --track-audio: #1e5f3a;
-  --track-image: #5f3a1e;
-  --track-text: #3a1e5f;
-  --clip-video: #2060a0;
-  --clip-audio: #208060;
-  --clip-image: #a06020;
-  --clip-text: #6020a0;
+  --bg-primary: #080809;
+  --bg-secondary: #0e0e10;
+  --bg-panel: #111113;
+  --bg-surface: #161618;
+  --bg-hover: #1e1e22;
+  --accent: #c87818;
+  --accent2: #1888c8;
+  --accent3: #8818c8;
+  --success: #18b858;
+  --danger: #c82020;
+  --text-primary: #c8c8d0;
+  --text-secondary: #606070;
+  --text-muted: #383848;
+  --border: #1a1a24;
+  --border-accent: #242434;
+  --timeline-bg: #080809;
+  --track-video: #0e1e30;
+  --track-audio: #0e2418;
+  --track-image: #281808;
+  --track-text: #180e28;
+  --clip-video: #153050;
+  --clip-audio: #0f3828;
+  --clip-image: #503010;
+  --clip-text: #301048;
 }
 
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -982,6 +982,8 @@ option { background: var(--bg-surface); }
       <div class="prop-section">
         <div class="prop-section-title">エフェクト</div>
         <div class="effect-chips" id="effect-chips">
+          <span class="effect-chip" onclick="toggleEffect(this,'fadein')">フェードイン</span>
+          <span class="effect-chip" onclick="toggleEffect(this,'fadeout')">フェードアウト</span>
           <span class="effect-chip" onclick="toggleEffect(this,'blur')">ぼかし</span>
           <span class="effect-chip" onclick="toggleEffect(this,'sharpen')">シャープ</span>
           <span class="effect-chip" onclick="toggleEffect(this,'grayscale')">グレー</span>
@@ -1216,7 +1218,14 @@ function getMediaDuration(item) {
   return new Promise(resolve => {
     const el = document.createElement(item.type === 'audio' ? 'audio' : 'video');
     el.src = item.url;
-    el.onloadedmetadata = () => { item.duration = el.duration; item.el = el; resolve(); };
+    el.preload = 'auto';
+    el.muted = false;
+    el.crossOrigin = 'anonymous';
+    el.onloadedmetadata = () => {
+      item.duration = el.duration;
+      item.el = el;
+      resolve();
+    };
     el.onerror = resolve;
   });
 }
@@ -1735,9 +1744,11 @@ function updateProperties() {
   document.getElementById('prop-text-anim').value = clip.textAnim || 'none';
   document.getElementById('prop-effect-intensity').value = clip.effectIntensity || 50;
   document.getElementById('prop-effect-intensity-num').value = clip.effectIntensity || 50;
-  // Effects
+  // Effects — sync chip active state by matching data from onclick attribute
   document.querySelectorAll('.effect-chip').forEach(el => {
-    el.classList.toggle('active', clip.effects.includes(el.onclick.toString().match(/'([^']+)'/)?.[1]));
+    const m = el.getAttribute('onclick').match(/'([^']+)'/);
+    const name = m ? m[1] : '';
+    el.classList.toggle('active', clip.effects.includes(name));
   });
   updatePropertiesInfo(clip);
 }
@@ -1790,11 +1801,12 @@ function updatePropDirect(key, val) {
 function toggleEffect(el, effectName) {
   const clip = state.clips.find(c => c.id === state.selectedClipId);
   if (!clip) return;
-  el.classList.toggle('active');
   if (clip.effects.includes(effectName)) {
     clip.effects = clip.effects.filter(e => e !== effectName);
+    el.classList.remove('active');
   } else {
     clip.effects.push(effectName);
+    el.classList.add('active');
   }
   renderPreviewFrame();
   notify(`エフェクト: ${effectName} ${clip.effects.includes(effectName) ? 'ON' : 'OFF'}`);
@@ -1818,17 +1830,23 @@ function togglePlay() {
 function play() {
   state.isPlaying = true;
   document.getElementById('play-btn').textContent = '⏸';
-  const fps = 30;
+  // Start all video/audio elements at the right time
+  syncMediaElements();
   let last = performance.now();
   function frame(now) {
     if (!state.isPlaying) return;
     const dt = (now - last) / 1000;
     last = now;
-    const speed = 1;
-    state.currentTime += dt * speed;
+    state.currentTime += dt;
     const maxT = getMaxClipEnd();
     if (state.currentTime >= maxT && maxT > 0) {
       state.currentTime = 0;
+      pauseAllMediaElements();
+      state.isPlaying = false;
+      document.getElementById('play-btn').textContent = '▶';
+      updatePlayhead();
+      renderPreviewFrame();
+      return;
     }
     updatePlayhead();
     renderPreviewFrame();
@@ -1840,10 +1858,48 @@ function play() {
 function pause() {
   state.isPlaying = false;
   document.getElementById('play-btn').textContent = '▶';
+  pauseAllMediaElements();
+}
+
+function syncMediaElements() {
+  const t = state.currentTime;
+  state.clips.forEach(clip => {
+    const media = state.mediaItems.find(m => m.id === clip.mediaId);
+    if (!media || !media.el) return;
+    const track = state.tracks.find(tr => tr.id === clip.trackId);
+    const muted = track ? track.muted : false;
+    if (t >= clip.startTime && t < clip.startTime + clip.duration) {
+      const mediaT = t - clip.startTime;
+      media.el.volume = Math.min(1, (clip.volume || 100) / 100);
+      media.el.muted = muted;
+      // Only seek if significantly out of sync
+      if (Math.abs(media.el.currentTime - mediaT) > 0.3) {
+        media.el.currentTime = mediaT;
+      }
+      if (media.el.paused) media.el.play().catch(() => {});
+    } else {
+      if (!media.el.paused) media.el.pause();
+    }
+  });
+}
+
+function pauseAllMediaElements() {
+  state.mediaItems.forEach(item => {
+    if (item.el && !item.el.paused) item.el.pause();
+  });
 }
 
 function seekRelative(dt) {
   state.currentTime = Math.max(0, state.currentTime + dt);
+  // Seek all media elements to correct position
+  state.clips.forEach(clip => {
+    const media = state.mediaItems.find(m => m.id === clip.mediaId);
+    if (!media || !media.el) return;
+    const t = state.currentTime;
+    if (t >= clip.startTime && t < clip.startTime + clip.duration) {
+      media.el.currentTime = t - clip.startTime;
+    }
+  });
   updatePlayhead();
   renderPreviewFrame();
 }
@@ -1889,10 +1945,15 @@ function renderPreviewFrame() {
   ctx2.clearRect(0, 0, W, H);
   ctx2.fillStyle = '#000';
   ctx2.fillRect(0, 0, W, H);
+  // High quality image rendering
+  ctx2.imageSmoothingEnabled = true;
+  ctx2.imageSmoothingQuality = 'high';
 
   const t = state.currentTime;
-  // Get active clips at current time, sorted by track order
   const activeClips = state.clips.filter(c => t >= c.startTime && t < c.startTime + c.duration);
+
+  // Sync media elements if playing
+  if (state.isPlaying) syncMediaElements();
 
   activeClips.forEach(clip => {
     const media = state.mediaItems.find(m => m.id === clip.mediaId);
@@ -1902,49 +1963,82 @@ function renderPreviewFrame() {
     const cy = H/2 + clip.y * (H/720);
     const sc = clip.scale / 100;
     const angle = clip.rotation * Math.PI / 180;
-    const alpha = clip.opacity / 100;
+    const progress = (t - clip.startTime) / clip.duration;
 
-    ctx2.globalAlpha = alpha;
+    // Opacity with fade effects
+    let alpha = clip.opacity / 100;
+    if (clip.effects.includes('fadein')) {
+      const fadeLen = Math.min(0.5, clip.duration * 0.3);
+      const elapsed = t - clip.startTime;
+      if (elapsed < fadeLen) alpha *= elapsed / fadeLen;
+    }
+    if (clip.effects.includes('fadeout')) {
+      const fadeLen = Math.min(0.5, clip.duration * 0.3);
+      const remaining = clip.startTime + clip.duration - t;
+      if (remaining < fadeLen) alpha *= remaining / fadeLen;
+    }
+
+    ctx2.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx2.translate(cx, cy);
     ctx2.rotate(angle);
     ctx2.scale(sc, sc);
 
-    // Apply effects as filters
+    // CSS-style filter effects
     const filters = [];
     if (clip.effects.includes('grayscale')) filters.push(`grayscale(${clip.effectIntensity}%)`);
     if (clip.effects.includes('sepia')) filters.push(`sepia(${clip.effectIntensity}%)`);
     if (clip.effects.includes('blur')) filters.push(`blur(${clip.effectIntensity/20}px)`);
     if (clip.effects.includes('invert')) filters.push(`invert(${clip.effectIntensity}%)`);
     if (clip.effects.includes('sharpen')) filters.push(`contrast(${100 + clip.effectIntensity/2}%) brightness(${100 + clip.effectIntensity/10}%)`);
-    if (clip.effects.includes('vintage')) filters.push(`sepia(60%) contrast(120%) brightness(90%)`);
+    if (clip.effects.includes('vintage')) filters.push(`sepia(60%) contrast(120%) brightness(85%)`);
     if (clip.effects.includes('neon')) filters.push(`hue-rotate(${Date.now()/20 % 360}deg) saturate(300%) brightness(150%)`);
     if (clip.effects.includes('vhs')) filters.push(`contrast(110%) saturate(70%) hue-rotate(10deg)`);
     if (filters.length) ctx2.filter = filters.join(' ');
 
     if (clip.type === 'video' && media && media.el) {
-      try { ctx2.drawImage(media.el, -640, -360, 1280, 720); } catch(e) {}
+      // Sync currentTime for seek (not playing)
+      if (!state.isPlaying) {
+        const targetT = t - clip.startTime;
+        if (Math.abs(media.el.currentTime - targetT) > 0.05) {
+          media.el.currentTime = targetT;
+        }
+      }
+      try {
+        // Draw video frame at full canvas resolution maintaining aspect ratio
+        const vw = media.el.videoWidth || 1280;
+        const vh = media.el.videoHeight || 720;
+        const vAR = vw / vh;
+        const cAR = W / H;
+        let dw, dh;
+        if (vAR > cAR) { dw = W; dh = W / vAR; }
+        else { dh = H; dw = H * vAR; }
+        ctx2.drawImage(media.el, -dw/2, -dh/2, dw, dh);
+      } catch(e) {}
     } else if (clip.type === 'image' && media) {
+      // Lazy-load image element with high quality
       if (!media.imgEl) {
         media.imgEl = new Image();
         media.imgEl.src = media.url;
       }
-      if (media.imgEl.complete) {
-        const ar = media.imgEl.naturalWidth / media.imgEl.naturalHeight;
-        let dw = 1280, dh = 720;
-        if (ar > 1280/720) { dh = 1280 / ar; } else { dw = 720 * ar; }
+      if (media.imgEl.complete && media.imgEl.naturalWidth > 0) {
+        const iw = media.imgEl.naturalWidth;
+        const ih = media.imgEl.naturalHeight;
+        const iAR = iw / ih;
+        const cAR = W / H;
+        let dw, dh;
+        if (iAR > cAR) { dw = W; dh = W / iAR; }
+        else { dh = H; dw = H * iAR; }
         ctx2.drawImage(media.imgEl, -dw/2, -dh/2, dw, dh);
       }
     } else if (clip.type === 'text') {
       renderTextClip(clip, t);
     } else if (clip.type === 'audio') {
-      // Audio visualization
       renderAudioViz(clip, t);
     } else {
-      // Placeholder
-      ctx2.fillStyle = 'rgba(100,100,200,0.3)';
+      ctx2.fillStyle = 'rgba(80,80,160,0.2)';
       ctx2.fillRect(-400, -200, 800, 400);
-      ctx2.fillStyle = '#fff';
-      ctx2.font = 'bold 24px Noto Sans JP';
+      ctx2.fillStyle = '#888';
+      ctx2.font = 'bold 20px Noto Sans JP';
       ctx2.textAlign = 'center';
       ctx2.textBaseline = 'middle';
       ctx2.fillText(clip.name, 0, 0);
@@ -1955,9 +2049,7 @@ function renderPreviewFrame() {
 
   // Glitch effect overlay
   const glitchClips = activeClips.filter(c => c.effects.includes('glitch'));
-  if (glitchClips.length > 0) {
-    applyGlitch();
-  }
+  if (glitchClips.length > 0) applyGlitch();
 }
 
 function renderTextClip(clip, t) {
@@ -2165,8 +2257,18 @@ document.getElementById('timeline-tracks').addEventListener('scroll', function()
 // ============================================================
 document.getElementById('timeline-ruler').addEventListener('mousedown', function(e) {
   const rect = this.getBoundingClientRect();
-  const x = e.clientX - rect.left + this.scrollLeft;
+  const scrollEl = document.getElementById('timeline-tracks');
+  const x = e.clientX - rect.left + scrollEl.scrollLeft;
   state.currentTime = Math.max(0, x / state.zoom);
+  // Seek all video/audio elements
+  state.clips.forEach(clip => {
+    const media = state.mediaItems.find(m => m.id === clip.mediaId);
+    if (!media || !media.el) return;
+    const t = state.currentTime;
+    if (t >= clip.startTime && t < clip.startTime + clip.duration) {
+      media.el.currentTime = t - clip.startTime;
+    }
+  });
   updatePlayhead();
   renderPreviewFrame();
 });
